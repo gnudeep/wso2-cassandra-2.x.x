@@ -1153,7 +1153,8 @@ public class CassandraServer implements Cassandra.Iface
         try
         {
             ThriftClientState cState = state();
-            String keyspace = cState.getKeyspace();
+//wso2
+            String keyspace = cState.getResolvedKeyspace();
             cState.hasColumnFamilyAccess(keyspace, column_parent.column_family, Permission.SELECT);
 
             CFMetaData metadata = ThriftValidation.validateColumnFamily(keyspace, column_parent.column_family);
@@ -1242,7 +1243,8 @@ public class CassandraServer implements Cassandra.Iface
         {
 
             ThriftClientState cState = state();
-            String keyspace = cState.getKeyspace();
+//wso2
+            String keyspace = cState.getResolvedKeyspace();
             cState.hasColumnFamilyAccess(keyspace, column_family, Permission.SELECT);
 
             CFMetaData metadata = ThriftValidation.validateColumnFamily(keyspace, column_family);
@@ -1340,7 +1342,8 @@ public class CassandraServer implements Cassandra.Iface
         try
         {
             ThriftClientState cState = state();
-            String keyspace = cState.getKeyspace();
+//wso2
+            String keyspace = cState.getResolvedKeyspace();
             cState.hasColumnFamilyAccess(keyspace, column_parent.column_family, Permission.SELECT);
             CFMetaData metadata = ThriftValidation.validateColumnFamily(keyspace, column_parent.column_family, false);
             ThriftValidation.validateColumnParent(metadata, column_parent);
@@ -1398,9 +1401,16 @@ public class CassandraServer implements Cassandra.Iface
             }
             catch (NotFoundException nfe)
             {
-                logger.info("Failed to find metadata for keyspace '{}'. Continuing... ", ks);
+//wso2
+                //logger.info("Failed to find metadata for keyspace '" + ks + "'. Continuing... ");
             }
         }
+        /*
+         *WSO2 : keyspace list converts to set to make a unique keyspace list
+         */
+        Set<KsDef> keyspaceSet = new HashSet(ksset);
+        ksset = new ArrayList(keyspaceSet);
+
         return ksset;
     }
 
@@ -1418,7 +1428,8 @@ public class CassandraServer implements Cassandra.Iface
     {
         try
         {
-            return StorageService.instance.describeRing(keyspace);
+//wso2
+            return StorageService.instance.describeRing(state().resolveKeyspace(keyspace));
         }
         catch (RequestValidationException e)
         {
@@ -1431,7 +1442,8 @@ public class CassandraServer implements Cassandra.Iface
     {
         try
         {
-            return StorageService.instance.describeLocalRing(keyspace);
+//wso2
+            return StorageService.instance.describeLocalRing(state().resolveKeyspace(keyspace));
         }
         catch (RequestValidationException e)
         {
@@ -1477,8 +1489,9 @@ public class CassandraServer implements Cassandra.Iface
         {
             Token.TokenFactory tf = StorageService.getPartitioner().getTokenFactory();
             Range<Token> tr = new Range<Token>(tf.fromString(start_token), tf.fromString(end_token));
+//wso2
             List<Pair<Range<Token>, Long>> splits =
-                    StorageService.instance.getSplits(state().getKeyspace(), cfName, tr, keys_per_split);
+                    StorageService.instance.getSplits(state().getResolvedKeyspace(), cfName, tr, keys_per_split);
             List<CfSplit> result = new ArrayList<CfSplit>(splits.size());
             for (Pair<Range<Token>, Long> split : splits)
                 result.add(new CfSplit(split.left.left.toString(), split.left.right.toString(), split.right));
@@ -1534,9 +1547,12 @@ public class CassandraServer implements Cassandra.Iface
         try
         {
             ClientState cState = state();
-            String keyspace = cState.getKeyspace();
+//wso2
+            String keyspace = cState.getResolvedKeyspace();
             cState.hasKeyspaceAccess(keyspace, Permission.CREATE);
             cf_def.unsetId(); // explicitly ignore any id set by client (Hector likes to set zero)
+//wso2
+            cf_def.setKeyspace(state().getResolvedKeyspace());
             CFMetaData cfm = CFMetaData.fromThrift(cf_def);
             CFMetaData.validateCompactionOptions(cfm.compactionStrategyClass, cfm.compactionStrategyOptions);
             cfm.addDefaultIndexNames();
@@ -1562,7 +1578,8 @@ public class CassandraServer implements Cassandra.Iface
 
         try
         {
-            String keyspace = cState.getKeyspace();
+//wso2
+            String keyspace = cState.getResolvedKeyspace();
             cState.hasColumnFamilyAccess(keyspace, column_family, Permission.DROP);
             MigrationManager.announceColumnFamilyDrop(keyspace, column_family);
             return Schema.instance.getVersion().toString();
@@ -1580,6 +1597,8 @@ public class CassandraServer implements Cassandra.Iface
 
         try
         {
+//wso2
+			ks_def.setName(state().resolveKeyspace(ks_def.name));
             ThriftValidation.validateKeyspaceNotSystem(ks_def.name);
             state().hasAllKeyspacesAccess(Permission.CREATE);
             ThriftValidation.validateKeyspaceNotYetExisting(ks_def.name);
@@ -1587,6 +1606,7 @@ public class CassandraServer implements Cassandra.Iface
             // generate a meaningful error if the user setup keyspace and/or column definition incorrectly
             for (CfDef cf : ks_def.cf_defs)
             {
+                cf.setKeyspace(state().resolveKeyspace(ks_def.name));
                 if (!cf.getKeyspace().equals(ks_def.getName()))
                 {
                     throw new InvalidRequestException("CfDef (" + cf.getName() +") had a keyspace definition that did not match KsDef");
@@ -1621,6 +1641,7 @@ public class CassandraServer implements Cassandra.Iface
 
         try
         {
+			keyspace = state().resolveKeyspace(keyspace);
             ThriftValidation.validateKeyspaceNotSystem(keyspace);
             state().hasKeyspaceAccess(keyspace, Permission.DROP);
 
@@ -1645,7 +1666,11 @@ public class CassandraServer implements Cassandra.Iface
         {
             ThriftValidation.validateKeyspaceNotSystem(ks_def.name);
             state().hasKeyspaceAccess(ks_def.name, Permission.ALTER);
-            ThriftValidation.validateKeyspace(ks_def.name);
+//wso2
+            String keyspace = state().resolveKeyspace(ks_def.name);
+            //wso2
+        	//ThriftValidation.validateTable(keyspace);
+        	ks_def.setName(keyspace);
             if (ks_def.getCf_defs() != null && ks_def.getCf_defs().size() > 0)
                 throw new InvalidRequestException("Keyspace update must not contain any column family definitions.");
 
@@ -1668,8 +1693,8 @@ public class CassandraServer implements Cassandra.Iface
             if (cf_def.keyspace == null || cf_def.name == null)
                 throw new InvalidRequestException("Keyspace and CF name must be set.");
 
-            state().hasColumnFamilyAccess(cf_def.keyspace, cf_def.name, Permission.ALTER);
-            CFMetaData oldCfm = Schema.instance.getCFMetaData(cf_def.keyspace, cf_def.name);
+            state().hasColumnFamilyAccess(state().resolveKeyspace(cf_def.keyspace), cf_def.name, Permission.ALTER);
+            CFMetaData oldCfm = Schema.instance.getCFMetaData(state().resolveKeyspace(cf_def.keyspace), cf_def.name);
 
             if (oldCfm == null)
                 throw new InvalidRequestException("Could not find column family definition to modify.");
@@ -1699,7 +1724,8 @@ public class CassandraServer implements Cassandra.Iface
 
         try
         {
-            String keyspace = cState.getKeyspace();
+//wso2
+            String keyspace = cState.getResolvedKeyspace();
             cState.hasColumnFamilyAccess(keyspace, cfname, Permission.MODIFY);
 
             if (startSessionIfRequested())
@@ -1708,13 +1734,15 @@ public class CassandraServer implements Cassandra.Iface
             }
             else
             {
-                logger.debug("truncating {}.{}", cState.getKeyspace(), cfname);
+//wso2
+                logger.debug("truncating {}.{}", keyspace, cfname);
             }
 
             schedule(DatabaseDescriptor.getTruncateRpcTimeout());
             try
             {
-                StorageProxy.truncateBlocking(cState.getKeyspace(), cfname);
+//wso2
+                StorageProxy.truncateBlocking(cState.getResolvedKeyspace(), cfname);
             }
             finally
             {
@@ -1781,7 +1809,8 @@ public class CassandraServer implements Cassandra.Iface
         try
         {
             ClientState cState = state();
-            String keyspace = cState.getKeyspace();
+//wso2
+            String keyspace = cState.getResolvedKeyspace();
 
             cState.hasColumnFamilyAccess(keyspace, column_parent.column_family, Permission.MODIFY);
 

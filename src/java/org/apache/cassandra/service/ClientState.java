@@ -68,6 +68,10 @@ public class ClientState
     // Current user for the session
     private volatile AuthenticatedUser user;
     private volatile String keyspace;
+//wso2
+	// Only for internal usage
+    private String qualifiedKeyspace;
+    private String prefix;
 
     private SemanticVersion cqlVersion;
     private static final QueryHandler cqlQueryHandler;
@@ -116,6 +120,9 @@ public class ClientState
         this.remoteAddress = remoteAddress;
         if (!DatabaseDescriptor.getAuthenticator().requireAuthentication())
             this.user = AuthenticatedUser.ANONYMOUS_USER;
+		//wso2
+		qualifiedKeyspace = null;
+        prefix = null;
     }
 
     /**
@@ -195,6 +202,8 @@ public class ClientState
         if (user != null && Schema.instance.getKSMetaData(ks) == null)
             throw new InvalidRequestException("Keyspace '" + ks + "' does not exist");
         keyspace = ks;
+//wso2
+		setQualifiedKeyspace();
     }
 
     /**
@@ -206,6 +215,8 @@ public class ClientState
            throw new AuthenticationException(String.format("User %s doesn't exist - create it with CREATE USER query first",
                                                            user.getName()));
         this.user = user;
+//wso2
+        setQualifiedKeyspace();
     }
 
     public void hasAllKeyspacesAccess(Permission perm) throws UnauthorizedException
@@ -218,12 +229,16 @@ public class ClientState
 
     public void hasKeyspaceAccess(String keyspace, Permission perm) throws UnauthorizedException, InvalidRequestException
     {
+//wso2
+        keyspace = getDomainNameLessKeyspace(keyspace);
         hasAccess(keyspace, perm, DataResource.keyspace(keyspace));
     }
 
     public void hasColumnFamilyAccess(String keyspace, String columnFamily, Permission perm)
     throws UnauthorizedException, InvalidRequestException
     {
+	//wso2
+        keyspace = getDomainNameLessKeyspace(keyspace);
         ThriftValidation.validateColumnFamily(keyspace, columnFamily);
         hasAccess(keyspace, perm, DataResource.columnFamily(keyspace, columnFamily));
     }
@@ -350,5 +365,78 @@ public class ClientState
     private Set<Permission> authorize(IResource resource)
     {
         return Auth.getPermissions(user, resource);
+    }
+
+    /**
+     * Returns the keyspace to be used for further Cassandra's operations
+     * If the current user has a keyspace qualified by his or her domain name, returns it. O.w. returns the original keyspace
+     *
+     * @return <String> the resolved keyspace name
+     */
+    public String getResolvedKeyspace() throws InvalidRequestException {
+        if (keyspace == null)
+            throw new InvalidRequestException("no keyspace has been specified");
+        resolveKeyspace(keyspace);
+        return qualifiedKeyspace == null ? keyspace : qualifiedKeyspace;
+    }
+
+    /**
+     * Returns the keyspace's name to be used by internal Cassandra's operations
+     * The given keyspace's name is modified appropriately by prefixing it with the user's domain name to the keyspace
+     *
+     * @param keyspaceTobeResolved the original keyspace's name given by the client application
+     * @return <String> the resolved keyspace name
+     */
+    public String resolveKeyspace(String keyspaceTobeResolved) {
+
+        return (prefix==null || prefix.equals("carbon_super_") || keyspaceTobeResolved.startsWith(prefix)) ? keyspaceTobeResolved : (prefix + keyspaceTobeResolved);
+    }
+
+    /**
+     * Remove the domain name from the keyspace name if there is one
+     *
+     * @param keyspaceWithDomainName keyspace name with domain name attach
+     * @return the resolved keyspace name
+     */
+    public String getDomainNameLessKeyspace(String keyspaceWithDomainName) {
+        return (prefix == null || !keyspaceWithDomainName.startsWith(prefix)) ? keyspaceWithDomainName :
+               keyspaceWithDomainName.substring(prefix.length());
+
+    }
+
+    private void setQualifiedKeyspace() {
+        if (user != null && user.getDomainName()!= null) {
+            if (prefix == null) {
+                String tmpPrefix = user.getDomainName() + "_";
+                tmpPrefix = tmpPrefix.replace(".", "_");
+                tmpPrefix = tmpPrefix.replace("-", "z");
+                prefix = tmpPrefix;
+
+            }
+            if (keyspace != null) {
+                //qualifiedKeyspace = prefix + keyspace;
+                qualifiedKeyspace = prefix.equals("carbon_super_")?keyspace:prefix + keyspace;
+            }
+        }
+    }
+
+    /**
+     * Returen authenticated tenant user
+     * @return  Tenant user name
+     */
+    public String getTenantUser() {
+        return user.getName();
+    }
+
+    /**
+     * Return Tenant domain
+     * @return  Tenant domain
+     */
+    public String getTenantDomain(){
+        return user.getDomainName();
+    }
+
+    public String getPrefix(){
+        return prefix;
     }
 }

@@ -28,15 +28,30 @@ public class AuthenticatedUser
     public static final AuthenticatedUser ANONYMOUS_USER = new AuthenticatedUser(ANONYMOUS_USERNAME);
 
     private final String name;
+    //wso2
+    private final String domainName;
 
     public AuthenticatedUser(String name)
     {
         this.name = name;
+        //wso2
+        this.domainName = null;
+    }
+    //wso2
+    public AuthenticatedUser(String name, String domainName)
+    {
+        this.name = name;
+        this.domainName = domainName;
     }
 
     public String getName()
     {
         return name;
+    }
+    //wso2
+    public String getDomainName()
+    {
+        return domainName;
     }
 
     /**
